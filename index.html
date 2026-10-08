@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Text Summarizer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Summarize long text in <span>seconds</span></h1>
+  <p class="sub">Paste text or upload a file. Pick how short you want it, then get a summary, key points, and a word count comparison.</p>
+
+  <section aria-labelledby="h-in">
+    <h2 id="h-in">Your text</h2>
+    <textarea id="input" placeholder="Paste an article, essay, or notes here…" aria-label="Text to summarize"></textarea>
+    <div class="row">
+      <span class="meta" id="inCount">0 words</span>
+      <label class="btn">Upload .txt or .md<input id="file" type="file" accept=".txt,.md,.text" hidden></label>
+    </div>
+    <div class="row">
+      <div class="slider">
+        <label for="length"><b>Summary length</b></label>
+        <input id="length" type="range" min="1" max="5" value="3">
+        <span id="lenLabel"></span>
+      </div>
+      <div>
+        <button id="clear" type="button">Clear</button>
+        <button id="go" type="button" class="primary">Summarize</button>
+      </div>
+    </div>
+    <p id="error" role="alert"></p>
+  </section>
+
+  <div id="results" hidden>
+    <section aria-labelledby="h-sum">
+      <h2 id="h-sum">Summary</h2>
+      <p id="summary"></p>
+      <div class="row"><span></span><button id="copy" type="button">Copy summary</button></div>
+    </section>
+    <section aria-labelledby="h-kp">
+      <h2 id="h-kp">Key points</h2>
+      <ul id="points"></ul>
+    </section>
+    <section class="cmp" aria-labelledby="h-wc">
+      <h2 id="h-wc">Word count comparison</h2>
+      <div>Original: <b id="origN"></b> words</div>
+      <div class="bar" id="origBar"></div>
+      <div>Summary: <b id="sumN"></b> words</div>
+      <div class="bar s" id="sumBar"></div>
+      <span class="cut" id="cut"></span>
+    </section>
+  </div>
+</main>
+<script src="summarizer.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

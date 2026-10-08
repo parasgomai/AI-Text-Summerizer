@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Text Summarizer</title>
+<style>
+:root{--ink:#16202e;--muted:#5b6678;--paper:#f3f5f8;--card:#fff;--line:#d5dbe4;--mark:#ffe36e;--accent:#1f4fd8;--bar:#9aa7bb}
+@media (prefers-color-scheme:dark){:root{--ink:#e8edf5;--muted:#9aa6b8;--paper:#10151d;--card:#171e29;--line:#2a3445;--mark:#6b5a12;--accent:#7ea2ff;--bar:#4a586e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 20px 64px}
+h1{font:700 2.1rem/1.15 Georgia,"Times New Roman",serif;margin:0 0 6px}
+h1 span{background:linear-gradient(transparent 55%,var(--mark) 55%)}
+.sub{color:var(--muted);margin:0 0 24px;max-width:60ch}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}
+h2{font:600 1.05rem/1.3 system-ui,sans-serif;margin:0 0 10px}
+textarea{width:100%;min-height:200px;resize:vertical;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font:inherit}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-top:12px}
+button,.btn{font:inherit;font-weight:600;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+:is(button,.btn,textarea,input):focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.slider{display:flex;align-items:center;gap:12px;flex:1;min-width:240px}
+.slider input{flex:1}
+#lenLabel{min-width:6.5em;font-weight:600}
+.meta{color:var(--muted);font-size:.9rem}
+#error{color:#c0392b;min-height:1.2em;margin:8px 0 0}
+#summary{font:1.1rem/1.7 Georgia,serif;margin:0}
+#points{margin:0;padding-left:1.2em}#points li{margin-bottom:8px}
+.bar{height:14px;border-radius:7px;background:var(--bar);margin:4px 0 12px}
+.bar.s{background:var(--accent)}
+.cmp b{font-size:1.4rem}
+.cut{display:inline-block;background:var(--mark);padding:2px 8px;border-radius:6px;font-weight:600}
+[hidden]{display:none!important}
+
+</style>
+</head>
+<body>
+<main>
+  <h1>Summarize long text in <span>seconds</span></h1>
+  <p class="sub">Paste text or upload a file. Pick how short you want it, then get a summary, key points, and a word count comparison.</p>
+
+  <section aria-labelledby="h-in">
+    <h2 id="h-in">Your text</h2>
+    <textarea id="input" placeholder="Paste an article, essay, or notes here…" aria-label="Text to summarize">Artificial intelligence is changing how people work. Many companies now use AI tools to write drafts, answer customer questions, and analyze large sets of data. These tools save time because they can process information far faster than a person can. However, AI systems also make mistakes, so human review is still important. Schools are adjusting too, with teachers exploring how AI can support learning without replacing effort from students. Researchers say the biggest benefit of AI is helping people focus on creative and complex tasks. Critics worry about privacy, bias, and job loss as the technology spreads. Governments around the world are drafting rules to make AI safer and more transparent. Experts agree that clear guidelines, good training data, and careful oversight will decide whether AI helps society in the long run.</textarea>
+    <div class="row">
+      <span class="meta" id="inCount">0 words</span>
+      <label class="btn">Upload .txt or .md<input id="file" type="file" accept=".txt,.md,.text" hidden></label>
+    </div>
+    <div class="row">
+      <div class="slider">
+        <label for="length"><b>Summary length</b></label>
+        <input id="length" type="range" min="1" max="5" value="3">
+        <span id="lenLabel"></span>
+      </div>
+      <div>
+        <button id="clear" type="button">Clear</button>
+        <button id="go" type="button" class="primary">Summarize</button>
+      </div>
+    </div>
+    <p id="error" role="alert"></p>
+  </section>
+
+  <div id="results" hidden>
+    <section aria-labelledby="h-sum">
+      <h2 id="h-sum">Summary</h2>
+      <p id="summary"></p>
+      <div class="row"><span></span><button id="copy" type="button">Copy summary</button></div>
+    </section>
+    <section aria-labelledby="h-kp">
+      <h2 id="h-kp">Key points</h2>
+      <ul id="points"></ul>
+    </section>
+    <section class="cmp" aria-labelledby="h-wc">
+      <h2 id="h-wc">Word count comparison</h2>
+      <div>Original: <b id="origN"></b> words</div>
+      <div class="bar" id="origBar"></div>
+      <div>Summary: <b id="sumN"></b> words</div>
+      <div class="bar s" id="sumBar"></div>
+      <span class="cut" id="cut"></span>
+    </section>
+  </div>
+</main>
+<script>
+/* Core summarizer logic: extractive, frequency-based (runs fully in the browser). */
+const STOPWORDS = new Set(("a an the and or but if then else of to in on at by for with from as is are was were be been being " +
+  "it its this that these those he she they we you i his her their our your my me him them us not no so such than too very " +
+  "can could will would shall should may might must do does did done have has had having about into over under again " +
+  "also just more most other some any each both few own same only up down out off what which who whom when where why how").split(" "));
+
+const words = t => (t.toLowerCase().match(/[a-z0-9']+/g) || []);
+const countWords = t => (t.trim() ? t.trim().split(/\s+/).length : 0);
+
+function splitSentences(text) {
+  return (text.replace(/\s+/g, " ").match(/[^.!?]+(?:[.!?]+["')\]]*|$)/g) || [])
+    .map(s => s.trim()).filter(s => words(s).length >= 4);
+}
+
+function termFrequencies(sentences) {
+  const tf = {};
+  sentences.forEach(s => words(s).forEach(w => {
+    if (!STOPWORDS.has(w) && w.length > 2) tf[w] = (tf[w] || 0) + 1;
+  }));
+  const max = Math.max(1, ...Object.values(tf));
+  for (const w in tf) tf[w] /= max;
+  return tf;
+}
+
+function scoreSentences(sentences, tf) {
+  return sentences.map((s, i) => {
+    const ws = words(s).filter(w => tf[w]);
+    const base = ws.reduce((a, w) => a + tf[w], 0) / Math.sqrt(Math.max(words(s).length, 1));
+    const position = i === 0 ? 1.25 : i === sentences.length - 1 ? 1.08 : 1;
+    return { i, s, score: base * position };
+  });
+}
+
+/** ratio: 0.1–0.7 of sentences kept. Returns summary, key points and word counts. */
+function summarize(text, ratio = 0.3) {
+  const sentences = splitSentences(text);
+  if (sentences.length < 2) return { summary: text.trim(), keyPoints: [], original: countWords(text), shortened: countWords(text) };
+  const tf = termFrequencies(sentences);
+  const scored = scoreSentences(sentences, tf);
+  const ranked = [...scored].sort((a, b) => b.score - a.score);
+
+  const n = Math.max(1, Math.round(sentences.length * ratio));
+  const summary = ranked.slice(0, n).sort((a, b) => a.i - b.i).map(x => x.s).join(" ");
+
+  // Key points: top sentences, skipping near-duplicates, trimmed to ~24 words.
+  const keyPoints = [];
+  for (const r of ranked) {
+    const rw = new Set(words(r.s).filter(w => tf[w]));
+    const dup = keyPoints.some(k => {
+      const kw = new Set(words(k.s).filter(w => tf[w]));
+      const shared = [...rw].filter(w => kw.has(w)).length;
+      return shared / Math.max(1, Math.min(rw.size, kw.size)) > 0.6;
+    });
+    if (!dup) keyPoints.push(r);
+    if (keyPoints.length === 5) break;
+  }
+  const trim = s => { const w = s.split(/\s+/); return w.length > 24 ? w.slice(0, 24).join(" ") + "…" : s; };
+
+  return {
+    summary,
+    keyPoints: keyPoints.sort((a, b) => a.i - b.i).map(k => trim(k.s)),
+    original: countWords(text),
+    shortened: countWords(summary),
+  };
+}
+
+/* UI wiring: input, file upload, slider, rendering. */
+const $ = id => document.getElementById(id);
+const input = $("input"), slider = $("length"), fileInput = $("file");
+const LABELS = ["", "Very short", "Short", "Medium", "Long", "Very long"];
+
+function levelToRatio(l) { return [0, 0.1, 0.2, 0.3, 0.45, 0.65][l]; }
+
+function run() {
+  const text = input.value.trim();
+  $("inCount").textContent = countWords(text) + " words";
+  if (!text) { $("results").hidden = true; $("error").textContent = "Paste some text or upload a .txt file first."; return; }
+  if (splitSentences(text).length < 3) { $("results").hidden = true; $("error").textContent = "Add at least three full sentences to summarize."; return; }
+  $("error").textContent = "";
+  const r = summarize(text, levelToRatio(+slider.value));
+  $("summary").textContent = r.summary;
+  $("points").replaceChildren(...r.keyPoints.map(p => Object.assign(document.createElement("li"), { textContent: p })));
+  const cut = Math.round((1 - r.shortened / r.original) * 100);
+  $("origN").textContent = r.original; $("sumN").textContent = r.shortened;
+  $("cut").textContent = cut + "% shorter";
+  $("origBar").style.width = "100%";
+  $("sumBar").style.width = Math.max(3, (r.shortened / r.original) * 100) + "%";
+  $("results").hidden = false;
+}
+
+slider.addEventListener("input", () => { $("lenLabel").textContent = LABELS[slider.value]; if (!$("results").hidden) run(); });
+input.addEventListener("input", () => { $("inCount").textContent = countWords(input.value) + " words"; });
+$("go").addEventListener("click", run);
+$("clear").addEventListener("click", () => { input.value = ""; $("results").hidden = true; $("error").textContent = ""; $("inCount").textContent = "0 words"; fileInput.value = ""; });
+$("copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("summary").textContent); $("copy").textContent = "Copied"; setTimeout(() => $("copy").textContent = "Copy summary", 1500); } catch (e) {}
+});
+fileInput.addEventListener("change", () => {
+  const f = fileInput.files[0]; if (!f) return;
+  if (!/\.(txt|md|text)$/i.test(f.name)) { $("error").textContent = "Use a .txt or .md file."; return; }
+  const rd = new FileReader();
+  rd.onload = () => { input.value = rd.result; $("inCount").textContent = countWords(rd.result) + " words"; $("error").textContent = ""; run(); };
+  rd.readAsText(f);
+});
+$("lenLabel").textContent = LABELS[slider.value];
+$("inCount").textContent = countWords(input.value) + " words"; run();
+
+</script>
+</body>
+</html>
